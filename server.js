@@ -7,7 +7,6 @@ const jwt = require('jsonwebtoken');
 const { OAuth2Client } = require('google-auth-library');
 
 const app = express();
-const port = 10756;
 
 // JWT Secret (use environment variable in production)
 const JWT_SECRET = 'a4bf7c0d30d87039b415c39eb5afbf3dce4933e2d12382bc04eed9557420b1b9c98c27762fff2653d0cc260dec481f698d94957dc2f3ccac856b9e6385637a5b';
@@ -20,12 +19,12 @@ app.use(cors());
 app.use(bodyParser.json());
 
 // MySQL Connection
+// MySQL Connection
 const db = mysql.createConnection({
-  host: 'yamanote.proxy.rlwy.net',
+  host: 'localhost',
   user: 'root',
-  password: 'djXRpecHObFPgbDxqNFZSNQCwUfXneel',
-  database: 'railway',
-  port: 10756
+  password: 'Sai1234',
+  database: 'roommate_expenses'
 });
 
 // Connect to MySQL
