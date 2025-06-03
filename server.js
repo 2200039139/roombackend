@@ -23,10 +23,11 @@ app.use(bodyParser.json());
 // MySQL Connection
 // MySQL Connection
 const db = mysql.createConnection({
-  host: 'localhost',
+  host: 'crossover.proxy.rlwy.net',
+  port: 45503,
   user: 'root',
-  password: 'Sai1234',
-  database: 'roommate_expenses'
+  password: 'pETMRzPHrccamZuZqumFloDKdPtekNXv',
+  database: 'railway'
 });
 
 // Connect to MySQL
