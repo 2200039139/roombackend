@@ -290,6 +290,18 @@ app.post('/api/users/google-auth', async (req, res) => {
   }
 });
 
+// Update your CORS middleware configuration
+const corsOptions = {
+  origin: [
+    'https://splitta1.vercel.app',
+    'http://localhost:3000' // For local development
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
+
+app.use(cors(corsOptions));
 // User Login
 app.post('/api/users/login', async (req, res) => {
   try {
