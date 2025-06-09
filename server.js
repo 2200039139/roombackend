@@ -292,7 +292,7 @@ app.post('/api/users/google-auth', async (req, res) => {
 // Update your CORS middleware configuration
 
 
-app.use(cors(corsOptions));
+
 // User Login
 app.post('/api/users/login', async (req, res) => {
   try {
