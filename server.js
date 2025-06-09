@@ -9,7 +9,6 @@ const { OAuth2Client } = require('google-auth-library');
 const app = express();
 const port = 5000;
 
-
 // JWT Secret (use environment variable in production)
 const JWT_SECRET = 'a4bf7c0d30d87039b415c39eb5afbf3dce4933e2d12382bc04eed9557420b1b9c98c27762fff2653d0cc260dec481f698d94957dc2f3ccac856b9e6385637a5b';
 
@@ -20,7 +19,6 @@ const googleClient = new OAuth2Client('37085501976-b54lfva9uchil1jq6boc6vt4jb1bq
 app.use(cors());
 app.use(bodyParser.json());
 
-// MySQL Connection
 // MySQL Connection
 const db = mysql.createConnection({
   host: 'crossover.proxy.rlwy.net',
@@ -67,6 +65,7 @@ db.connect(err => {
       paidBy INT NOT NULL,
       date DATE NOT NULL,
       userId INT NOT NULL,
+      splitAmong JSON DEFAULT NULL,
       FOREIGN KEY (paidBy) REFERENCES roommates(id) ON DELETE CASCADE,
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     )
@@ -419,13 +418,20 @@ app.get('/api/expenses', authenticateToken, (req, res) => {
     if (err) {
       return res.status(500).json({ error: err.message });
     }
-    res.json(results);
+    
+    // Parse the splitAmong JSON string
+    const expenses = results.map(expense => ({
+      ...expense,
+      splitAmong: expense.splitAmong ? JSON.parse(expense.splitAmong) : []
+    }));
+    
+    res.json(expenses);
   });
 });
 
 // Add a new expense
 app.post('/api/expenses', authenticateToken, (req, res) => {
-  const { description, amount, paidBy, date } = req.body;
+  const { description, amount, paidBy, date, splitAmong } = req.body;
   const userId = req.user.id;
   
   if (!description || description.trim() === '') {
@@ -443,7 +449,11 @@ app.post('/api/expenses', authenticateToken, (req, res) => {
   if (!date) {
     return res.status(400).json({ error: 'Date is required' });
   }
-  
+
+  if (!splitAmong || !Array.isArray(splitAmong) || splitAmong.length === 0) {
+    return res.status(400).json({ error: 'Please select at least one person to split with' });
+  }
+
   db.query('SELECT * FROM roommates WHERE id = ? AND userId = ?', [paidBy, userId], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -453,16 +463,39 @@ app.post('/api/expenses', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Invalid roommate selected' });
     }
     
+    // Verify all splitAmong roommates belong to the user
     db.query(
-      'INSERT INTO expenses (description, amount, paidBy, date, userId) VALUES (?, ?, ?, ?, ?)',
-      [description, amount, paidBy, date, userId],
-      (err, result) => {
+      'SELECT COUNT(*) as count FROM roommates WHERE id IN (?) AND userId = ?',
+      [splitAmong, userId],
+      (err, results) => {
         if (err) {
           return res.status(500).json({ error: err.message });
         }
         
-        const id = result.insertId;
-        res.status(201).json({ id, description, amount, paidBy, date, userId });
+        if (results[0].count !== splitAmong.length) {
+          return res.status(400).json({ error: 'Invalid roommates selected for splitting' });
+        }
+        
+        db.query(
+          'INSERT INTO expenses (description, amount, paidBy, date, userId, splitAmong) VALUES (?, ?, ?, ?, ?, ?)',
+          [description, amount, paidBy, date, userId, JSON.stringify(splitAmong)],
+          (err, result) => {
+            if (err) {
+              return res.status(500).json({ error: err.message });
+            }
+            
+            const id = result.insertId;
+            res.status(201).json({ 
+              id, 
+              description, 
+              amount, 
+              paidBy, 
+              date, 
+              userId,
+              splitAmong 
+            });
+          }
+        );
       }
     );
   });
