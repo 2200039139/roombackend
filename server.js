@@ -193,6 +193,21 @@ app.post('/api/users/register', async (req, res) => {
   }
 });
 
+// Add this after all your routes
+app.use((err, req, res, next) => {
+  console.error('Error:', err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
+
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
 // Google Authentication
 app.post('/api/users/google-auth', async (req, res) => {
   try {
