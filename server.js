@@ -64,8 +64,8 @@ db.connect(err => {
       amount DECIMAL(10, 2) NOT NULL,
       paidBy INT NOT NULL,
       date DATE NOT NULL,
-      userId INT NOT NULL,
       splitAmong JSON DEFAULT NULL,
+      userId INT NOT NULL,
       FOREIGN KEY (paidBy) REFERENCES roommates(id) ON DELETE CASCADE,
       FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
     )
@@ -193,21 +193,6 @@ app.post('/api/users/register', async (req, res) => {
   }
 });
 
-// Add this after all your routes
-app.use((err, req, res, next) => {
-  console.error('Error:', err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled rejection:', err);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
-});
 // Google Authentication
 app.post('/api/users/google-auth', async (req, res) => {
   try {
@@ -305,18 +290,6 @@ app.post('/api/users/google-auth', async (req, res) => {
   }
 });
 
-// Update your CORS middleware configuration
-const corsOptions = {
-  origin: [
-    'https://splitta1.vercel.app',
-    'http://localhost:3000' // For local development
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-};
-
-app.use(cors(corsOptions));
 // User Login
 app.post('/api/users/login', async (req, res) => {
   try {
@@ -446,13 +419,13 @@ app.get('/api/expenses', authenticateToken, (req, res) => {
       return res.status(500).json({ error: err.message });
     }
     
-    // Parse the splitAmong JSON string
-    const expenses = results.map(expense => ({
+    // Parse the splitAmong JSON if it exists
+    const expensesWithSplit = results.map(expense => ({
       ...expense,
       splitAmong: expense.splitAmong ? JSON.parse(expense.splitAmong) : []
     }));
     
-    res.json(expenses);
+    res.json(expensesWithSplit);
   });
 });
 
@@ -476,11 +449,11 @@ app.post('/api/expenses', authenticateToken, (req, res) => {
   if (!date) {
     return res.status(400).json({ error: 'Date is required' });
   }
-
+  
   if (!splitAmong || !Array.isArray(splitAmong) || splitAmong.length === 0) {
-    return res.status(400).json({ error: 'Please select at least one person to split with' });
+    return res.status(400).json({ error: 'At least one participant is required' });
   }
-
+  
   db.query('SELECT * FROM roommates WHERE id = ? AND userId = ?', [paidBy, userId], (err, results) => {
     if (err) {
       return res.status(500).json({ error: err.message });
@@ -490,22 +463,25 @@ app.post('/api/expenses', authenticateToken, (req, res) => {
       return res.status(400).json({ error: 'Invalid roommate selected' });
     }
     
-    // Verify all splitAmong roommates belong to the user
+    // Verify all split participants are valid roommates
     db.query(
-      'SELECT COUNT(*) as count FROM roommates WHERE id IN (?) AND userId = ?',
+      'SELECT id FROM roommates WHERE id IN (?) AND userId = ?',
       [splitAmong, userId],
-      (err, results) => {
+      (err, participantResults) => {
         if (err) {
           return res.status(500).json({ error: err.message });
         }
         
-        if (results[0].count !== splitAmong.length) {
-          return res.status(400).json({ error: 'Invalid roommates selected for splitting' });
+        if (participantResults.length !== splitAmong.length) {
+          return res.status(400).json({ error: 'Invalid participants selected' });
         }
         
+        // Store splitAmong as JSON in the database
+        const splitAmongJson = JSON.stringify(splitAmong);
+        
         db.query(
-          'INSERT INTO expenses (description, amount, paidBy, date, userId, splitAmong) VALUES (?, ?, ?, ?, ?, ?)',
-          [description, amount, paidBy, date, userId, JSON.stringify(splitAmong)],
+          'INSERT INTO expenses (description, amount, paidBy, date, splitAmong, userId) VALUES (?, ?, ?, ?, ?, ?)',
+          [description, amount, paidBy, date, splitAmongJson, userId],
           (err, result) => {
             if (err) {
               return res.status(500).json({ error: err.message });
@@ -518,8 +494,8 @@ app.post('/api/expenses', authenticateToken, (req, res) => {
               amount, 
               paidBy, 
               date, 
-              userId,
-              splitAmong 
+              splitAmong,
+              userId 
             });
           }
         );
