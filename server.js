@@ -626,18 +626,18 @@ app.delete('/api/settlements/:id', authenticateToken, (req, res) => {
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error('Error:', err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
-
-// Handle unhandled promise rejections
-process.on('unhandledRejection', (err) => {
-  console.error('Unhandled rejection:', err);
-});
-
-// Handle uncaught exceptions
-process.on('uncaughtException', (err) => {
-  console.error('Uncaught exception:', err);
+  console.error('Server error:', err.stack);
+  
+  // Set proper CORS headers even on errors
+  res.header('Access-Control-Allow-Origin', allowedOrigins);
+  res.header('Access-Control-Allow-Credentials', 'true');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  
+  res.status(500).json({ 
+    error: 'Internal Server Error',
+    message: process.env.NODE_ENV === 'development' ? err.message : undefined
+  });
 });
 
 // Start server
