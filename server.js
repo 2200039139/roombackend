@@ -16,18 +16,30 @@ const JWT_SECRET = 'a4bf7c0d30d87039b415c39eb5afbf3dce4933e2d12382bc04eed9557420
 const googleClient = new OAuth2Client('37085501976-b54lfva9uchil1jq6boc6vt4jb1bqb5d.apps.googleusercontent.com');
 
 // CORS Configuration
+const allowedOrigins = [
+  'https://splitta1.vercel.app',
+  'http://localhost:3000' // For local development
+];
 const corsOptions = {
-  origin: [
-    'https://splitta1.vercel.app',
-    'http://localhost:3000'
-  ],
+  origin: function (origin, callback) {
+    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
+  credentials: true,
+  optionsSuccessStatus: 200 // For legacy browser support
 };
 
-// Middleware
 app.use(cors(corsOptions));
+
+// Handle preflight requests
+app.options('*', cors(corsOptions));
+// Middleware
+
 app.use(bodyParser.json());
 
 // Database Connection
