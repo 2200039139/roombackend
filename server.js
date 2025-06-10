@@ -15,106 +15,95 @@ const JWT_SECRET = 'a4bf7c0d30d87039b415c39eb5afbf3dce4933e2d12382bc04eed9557420
 // Google OAuth Client
 const googleClient = new OAuth2Client('37085501976-b54lfva9uchil1jq6boc6vt4jb1bqb5d.apps.googleusercontent.com');
 
-// CORS Configuration
-const allowedOrigins = [
-  'https://splitta1.vercel.app',
-  'http://localhost:3000' // For local development
-];
-const corsOptions = {
-  origin: function (origin, callback) {
-    if (!origin || allowedOrigins.indexOf(origin) !== -1) {
-      callback(null, true);
-    } else {
-      callback(new Error('Not allowed by CORS'));
-    }
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-  optionsSuccessStatus: 200 // For legacy browser support
-};
-
-app.use(cors(corsOptions));
-
-// Handle preflight requests
-app.options('*', cors(corsOptions));
 // Middleware
-
+app.use(cors());
 app.use(bodyParser.json());
 
-// Database Connection
-const db = mysql.createPool({
+// MySQL Connection
+const db = mysql.createConnection({
   host: 'crossover.proxy.rlwy.net',
   port: 45503,
   user: 'root',
   password: 'pETMRzPHrccamZuZqumFloDKdPtekNXv',
-  database: 'railway',
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+  database: 'railway'
 });
 
-// Test database connection
-db.getConnection((err, connection) => {
+// Connect to MySQL
+db.connect(err => {
   if (err) {
     console.error('Error connecting to MySQL database:', err);
     return;
   }
   console.log('Connected to MySQL database');
-  connection.release();
   
   // Create tables if they don't exist
-  const createTables = async () => {
-    const queries = [
-      `CREATE TABLE IF NOT EXISTS users (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        fullName VARCHAR(255) NOT NULL,
-        email VARCHAR(255) NOT NULL UNIQUE,
-        password VARCHAR(255),
-        googleId VARCHAR(255),
-        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-      )`,
-      `CREATE TABLE IF NOT EXISTS roommates (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        userId INT NOT NULL,
-        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-      )`,
-      `CREATE TABLE IF NOT EXISTS expenses (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        description VARCHAR(255) NOT NULL,
-        amount DECIMAL(10, 2) NOT NULL,
-        paidBy INT NOT NULL,
-        date DATE NOT NULL,
-        userId INT NOT NULL,
-        splitAmong JSON DEFAULT NULL,
-        FOREIGN KEY (paidBy) REFERENCES roommates(id) ON DELETE CASCADE,
-        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-      )`,
-      `CREATE TABLE IF NOT EXISTS settlements (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        fromId INT NOT NULL,
-        toId INT NOT NULL,
-        amount DECIMAL(10, 2) NOT NULL,
-        date DATE NOT NULL,
-        userId INT NOT NULL,
-        FOREIGN KEY (fromId) REFERENCES roommates(id) ON DELETE CASCADE,
-        FOREIGN KEY (toId) REFERENCES roommates(id) ON DELETE CASCADE,
-        FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
-      )`
-    ];
-
-    try {
-      for (const query of queries) {
-        await db.promise().query(query);
-      }
-      console.log('All tables ready');
-    } catch (err) {
-      console.error('Error creating tables:', err);
-    }
-  };
-
-  createTables();
+  const createUsersTable = `
+    CREATE TABLE IF NOT EXISTS users (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      fullName VARCHAR(255) NOT NULL,
+      email VARCHAR(255) NOT NULL UNIQUE,
+      password VARCHAR(255),
+      googleId VARCHAR(255),
+      createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )
+  `;
+  
+  const createRoommatesTable = `
+    CREATE TABLE IF NOT EXISTS roommates (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      name VARCHAR(255) NOT NULL,
+      userId INT NOT NULL,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `;
+  
+  const createExpensesTable = `
+    CREATE TABLE IF NOT EXISTS expenses (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      description VARCHAR(255) NOT NULL,
+      amount DECIMAL(10, 2) NOT NULL,
+      paidBy INT NOT NULL,
+      date DATE NOT NULL,
+      userId INT NOT NULL,
+      splitAmong JSON DEFAULT NULL,
+      FOREIGN KEY (paidBy) REFERENCES roommates(id) ON DELETE CASCADE,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `;
+  
+  const createSettlementsTable = `
+    CREATE TABLE IF NOT EXISTS settlements (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      fromId INT NOT NULL,
+      toId INT NOT NULL,
+      amount DECIMAL(10, 2) NOT NULL,
+      date DATE NOT NULL,
+      userId INT NOT NULL,
+      FOREIGN KEY (fromId) REFERENCES roommates(id) ON DELETE CASCADE,
+      FOREIGN KEY (toId) REFERENCES roommates(id) ON DELETE CASCADE,
+      FOREIGN KEY (userId) REFERENCES users(id) ON DELETE CASCADE
+    )
+  `;
+  
+  db.query(createUsersTable, (err) => {
+    if (err) console.error('Error creating users table:', err);
+    else console.log('Users table ready');
+  });
+  
+  db.query(createRoommatesTable, (err) => {
+    if (err) console.error('Error creating roommates table:', err);
+    else console.log('Roommates table ready');
+  });
+  
+  db.query(createExpensesTable, (err) => {
+    if (err) console.error('Error creating expenses table:', err);
+    else console.log('Expenses table ready');
+  });
+  
+  db.query(createSettlementsTable, (err) => {
+    if (err) console.error('Error creating settlements table:', err);
+    else console.log('Settlements table ready');
+  });
 });
 
 // Middleware to verify JWT token
@@ -135,6 +124,9 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
+// USER AUTHENTICATION ROUTES
+
+// User Registration
 app.post('/api/users/register', async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
@@ -201,9 +193,21 @@ app.post('/api/users/register', async (req, res) => {
   }
 });
 
+// Add this after all your routes
+app.use((err, req, res, next) => {
+  console.error('Error:', err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
+});
 
+// Handle unhandled promise rejections
+process.on('unhandledRejection', (err) => {
+  console.error('Unhandled rejection:', err);
+});
 
-
+// Handle uncaught exceptions
+process.on('uncaughtException', (err) => {
+  console.error('Uncaught exception:', err);
+});
 // Google Authentication
 app.post('/api/users/google-auth', async (req, res) => {
   try {
@@ -302,9 +306,17 @@ app.post('/api/users/google-auth', async (req, res) => {
 });
 
 // Update your CORS middleware configuration
+const corsOptions = {
+  origin: [
+    'https://splitta1.vercel.app',
+    'http://localhost:3000' // For local development
+  ],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+  credentials: true
+};
 
-
-
+app.use(cors(corsOptions));
 // User Login
 app.post('/api/users/login', async (req, res) => {
   try {
@@ -618,25 +630,6 @@ app.delete('/api/settlements/:id', authenticateToken, (req, res) => {
       
       res.json({ message: 'Settlement deleted successfully' });
     });
-  });
-});
-
-
-
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error('Server error:', err.stack);
-  
-  // Set proper CORS headers even on errors
-  res.header('Access-Control-Allow-Origin', allowedOrigins);
-  res.header('Access-Control-Allow-Credentials', 'true');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  
-  res.status(500).json({ 
-    error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'development' ? err.message : undefined
   });
 });
 
