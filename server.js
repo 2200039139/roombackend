@@ -1,5 +1,5 @@
 const express = require('express');
-const mysql = require('mysql2/promise');
+const mysql = require('mysql2/promise'); // Using promise-based version
 const cors = require('cors');
 const bodyParser = require('body-parser');
 const bcrypt = require('bcryptjs');
@@ -9,35 +9,36 @@ const { OAuth2Client } = require('google-auth-library');
 const app = express();
 const port = process.env.PORT || 5000;
 
-// JWT Secret
+// JWT Secret (use environment variable in production)
 const JWT_SECRET = process.env.JWT_SECRET || 'a4bf7c0d30d87039b415c39eb5afbf3dce4933e2d12382bc04eed9557420b1b9c98c27762fff2653d0cc260dec481f698d94957dc2f3ccac856b9e6385637a5b';
 
 // Google OAuth Client
-const googleClient = new OAuth2Client(
-  process.env.GOOGLE_CLIENT_ID || '37085501976-b54lfva9uchil1jq6boc6vt4jb1bqb5d.apps.googleusercontent.com'
-);
+const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID || '37085501976-b54lfva9uchil1jq6boc6vt4jb1bqb5d.apps.googleusercontent.com');
 
-// ✅ CORS Configuration
-const corsOptions = {
-  origin: [
-    'https://splitta1.vercel.app',
-    'http://localhost:3000'
-  ],
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true
-};
+// --- CORS Middleware ---
+const allowedOrigins = [
+  'https://splitta1.vercel.app',
+  'http://localhost:3000'
+];
 
-// Middleware
-app.use(cors(corsOptions));
-app.use(bodyParser.json());
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.header('Access-Control-Allow-Origin', origin);
+  }
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+  res.header('Access-Control-Allow-Credentials', 'true');
 
-// ✅ Ensure preflight is always handled
-app.options('*', cors(corsOptions), (req, res) => {
-  res.sendStatus(200);
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
 });
 
-// MySQL Connection Pool
+app.use(bodyParser.json());
+
+// --- MySQL Connection Pool ---
 const pool = mysql.createPool({
   host: process.env.DB_HOST || 'gondola.proxy.rlwy.net',
   port: process.env.DB_PORT || 54475,
@@ -49,7 +50,7 @@ const pool = mysql.createPool({
   queueLimit: 0
 });
 
-// Initialize database tables
+// --- Initialize Database Tables ---
 async function initializeDatabase() {
   try {
     const connection = await pool.getConnection();
@@ -112,7 +113,7 @@ async function initializeDatabase() {
 
 initializeDatabase();
 
-// Middleware to verify JWT token
+// --- JWT Authentication Middleware ---
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
@@ -130,7 +131,9 @@ const authenticateToken = (req, res, next) => {
   }
 };
 
-// USER AUTHENTICATION ROUTES
+// --- USER AUTHENTICATION ROUTES ---
+
+// User Registration
 app.post('/api/users/register', async (req, res) => {
   try {
     const { fullName, email, password } = req.body;
@@ -162,17 +165,11 @@ app.post('/api/users/register', async (req, res) => {
     );
 
     const userId = result.insertId;
-    const token = jwt.sign(
-      { id: userId, email, fullName },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
-
-    const user = { id: userId, fullName, email };
+    const token = jwt.sign({ id: userId, email, fullName }, JWT_SECRET, { expiresIn: '24h' });
 
     res.status(201).json({
       message: 'User registered successfully',
-      user,
+      user: { id: userId, fullName, email },
       token
     });
   } catch (error) {
@@ -185,13 +182,11 @@ app.post('/api/users/register', async (req, res) => {
 app.post('/api/users/google-auth', async (req, res) => {
   try {
     const { token } = req.body;
-    if (!token) {
-      return res.status(400).json({ error: 'Token is required' });
-    }
+    if (!token) return res.status(400).json({ error: 'Token is required' });
 
     const ticket = await googleClient.verifyIdToken({
       idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID || '37085501976-b54lfva9uchil1jq6boc6vt4jb1bqb5d.apps.googleusercontent.com'
+      audience: process.env.GOOGLE_CLIENT_ID
     });
 
     const payload = ticket.getPayload();
@@ -208,14 +203,17 @@ app.post('/api/users/google-auth', async (req, res) => {
         await pool.query('UPDATE users SET googleId = ? WHERE id = ?', [googleId, user.id]);
       }
 
-      const token = jwt.sign(
+      const jwtToken = jwt.sign(
         { id: user.id, email: user.email, fullName: user.fullName },
         JWT_SECRET,
         { expiresIn: '24h' }
       );
 
-      const userData = { id: user.id, fullName: user.fullName, email: user.email };
-      return res.json({ message: 'Login successful', user: userData, token });
+      return res.json({
+        message: 'Login successful',
+        user: { id: user.id, fullName: user.fullName, email: user.email },
+        token: jwtToken
+      });
     } else {
       const [result] = await pool.query(
         'INSERT INTO users (fullName, email, googleId) VALUES (?, ?, ?)',
@@ -223,14 +221,13 @@ app.post('/api/users/google-auth', async (req, res) => {
       );
 
       const userId = result.insertId;
-      const token = jwt.sign(
-        { id: userId, email, fullName: name },
-        JWT_SECRET,
-        { expiresIn: '24h' }
-      );
+      const jwtToken = jwt.sign({ id: userId, email, fullName: name }, JWT_SECRET, { expiresIn: '24h' });
 
-      const userData = { id: userId, fullName: name, email };
-      res.status(201).json({ message: 'User registered successfully with Google', user: userData, token });
+      res.status(201).json({
+        message: 'User registered successfully with Google',
+        user: { id: userId, fullName: name, email },
+        token: jwtToken
+      });
     }
   } catch (error) {
     console.error('Google authentication error:', error);
@@ -242,38 +239,37 @@ app.post('/api/users/google-auth', async (req, res) => {
 app.post('/api/users/login', async (req, res) => {
   try {
     const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ error: 'Please provide email and password' });
-    }
+    if (!email || !password) return res.status(400).json({ error: 'Please provide email and password' });
 
     const [users] = await pool.query('SELECT * FROM users WHERE email = ?', [email]);
-    if (users.length === 0) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    if (users.length === 0) return res.status(401).json({ error: 'Invalid credentials' });
 
     const user = users[0];
     const isMatch = await bcrypt.compare(password, user.password);
-    if (!isMatch) {
-      return res.status(401).json({ error: 'Invalid credentials' });
-    }
+    if (!isMatch) return res.status(401).json({ error: 'Invalid credentials' });
 
-    const token = jwt.sign(
-      { id: user.id, email: user.email, fullName: user.fullName },
-      JWT_SECRET,
-      { expiresIn: '24h' }
-    );
+    const token = jwt.sign({ id: user.id, email: user.email, fullName: user.fullName }, JWT_SECRET, { expiresIn: '24h' });
 
-    const userData = { id: user.id, fullName: user.fullName, email: user.email };
-    res.json({ message: 'Login successful', user: userData, token });
+    res.json({ message: 'Login successful', user: { id: user.id, fullName: user.fullName, email: user.email }, token });
   } catch (error) {
     console.error('Login error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
 
-// ====== ROOMMATE, EXPENSE, SETTLEMENT routes stay the same (unchanged) ======
-// (Keep your existing code for them)
+// Get user profile
+app.get('/api/users/me', authenticateToken, async (req, res) => {
+  try {
+    const [users] = await pool.query('SELECT id, fullName, email FROM users WHERE id = ?', [req.user.id]);
+    if (users.length === 0) return res.status(404).json({ error: 'User not found' });
+    res.json(users[0]);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// --- ROOMMATE, EXPENSE, SETTLEMENT ROUTES ---
+// (Keep all existing routes as in your original code)
 
 // Error handling middleware
 app.use((err, req, res, next) => {
