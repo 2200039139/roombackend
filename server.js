@@ -33,10 +33,10 @@ app.options('*', cors(corsOptions)); // Handle preflight requests
 
 // MySQL Connection Pool
 const pool = mysql.createPool({
-  host: process.env.DB_HOST || 'crossover.proxy.rlwy.net',
-  port: process.env.DB_PORT || 45503,
+  host: process.env.DB_HOST || 'gondola.proxy.rlwy.net',  // from Railway URL
+  port: process.env.DB_PORT || 54475,                    // from Railway URL
   user: process.env.DB_USER || 'root',
-  password: process.env.DB_PASSWORD || 'pETMRzPHrccamZuZqumFloDKdPtekNXv',
+  password: process.env.DB_PASSWORD || 'ryRFAgfgQJWwwDHJaqSReWJxShpiaNMj',
   database: process.env.DB_NAME || 'railway',
   waitForConnections: true,
   connectionLimit: 10,
